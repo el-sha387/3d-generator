@@ -1,11 +1,24 @@
 import { SHAPES } from '../shapes/registry'
 
+// Shapes nach Gruppe gruppieren
+function getGroups() {
+  const groups = {}
+  Object.entries(SHAPES).forEach(([key, shape]) => {
+    const g = shape.group || 'Sonstiges'
+    if (!groups[g]) groups[g] = []
+    groups[g].push({ key, ...shape })
+  })
+  return groups
+}
+
 export function FormPanel({ shapeKey, params, onShapeChange, onParamChange }) {
-  const shape = SHAPES[shapeKey]
+  const shape  = SHAPES[shapeKey]
+  const groups = getGroups()
+  const cols   = Math.min(shape?.fields?.length ?? 1, 3)
 
   return (
     <div className="card">
-      {/* Shape selector */}
+      {/* Shape selector mit Gruppen */}
       <div className="field-group">
         <label className="field-label">Formtyp</label>
         <select
@@ -13,15 +26,19 @@ export function FormPanel({ shapeKey, params, onShapeChange, onParamChange }) {
           value={shapeKey}
           onChange={e => onShapeChange(e.target.value)}
         >
-          {Object.entries(SHAPES).map(([key, s]) => (
-            <option key={key} value={key}>{s.label}</option>
+          {Object.entries(groups).map(([groupName, shapes]) => (
+            <optgroup key={groupName} label={groupName}>
+              {shapes.map(s => (
+                <option key={s.key} value={s.key}>{s.label}</option>
+              ))}
+            </optgroup>
           ))}
         </select>
       </div>
 
-      {/* Dynamic parameter fields */}
+      {/* Dynamische Parameter-Felder */}
       {shape && (
-        <div className={`fields cols-${Math.min(shape.fields.length, 3)}`}>
+        <div className={`fields cols-${cols}`}>
           {shape.fields.map(field => (
             <div key={field.id} className="field-group">
               <label className="field-label">{field.label}</label>

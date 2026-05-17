@@ -1,5 +1,6 @@
 import { primitives, booleans, transforms } from '@jscad/modeling'
 import { jscadToThreeGeometry } from '../utils/jscadToThree.js'
+import * as THREE from 'three'
 
 const { cuboid } = primitives
 const { subtract, union } = booleans
@@ -47,7 +48,10 @@ export function buildSteckleiste({ total_length, width, thickness, clearance }) 
     }
 
     parts.push({
-      geometry: jscadToThreeGeometry(body),
+      const _geo = jscadToThreeGeometry(body)
+      _geo.applyMatrix4(new THREE.Matrix4().makeRotationX(-Math.PI / 2))
+      _geo.translate(0, thickness / 2, 0)
+      geometry: _geo,
       label:    `Segment_${String(i + 1).padStart(2, '0')}`,
       // Vorschau: Segmente nebeneinander mit 20mm Lücke
       previewOffsetX: i * (segLen + 20),

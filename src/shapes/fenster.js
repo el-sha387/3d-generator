@@ -1,16 +1,13 @@
 /**
  * Fensterscheibe 4-teilig – Nut & Feder über volle Länge
  *
- * Jede Viertelscheibe hat eine Nut entlang BEIDER Innenkanten (volle Länge).
- * Separate Schienen verbinden je 2 benachbarte Scheiben entlang der gesamten Naht.
+ * Viertelscheibe: Nut entlang beider Innenkanten (volle Länge)
+ * Schienen verbinden je 2 Scheiben entlang der gesamten Naht
  *
- * ZIP enthält:
- *   Viertelscheibe.stl  – 4× drucken
- *   Schiene_V.stl       – 2× drucken (vertikale Naht, volle Höhe)
- *   Schiene_H.stl       – 2× drucken (horizontale Naht, stoppt an Vertikalschiene)
+ * ZIP: Viertelscheibe.stl (4×) · Schiene_V.stl (2×) · Schiene_H.stl (2×)
  *
  * Montage:
- *   1. Vertikalschienen in vertikale Nuten schieben
+ *   1. Vertikalschienen einschieben (volle Höhe)
  *   2. Horizontalschienen von außen einschieben (stoppen an Vertikalschiene)
  */
 
@@ -23,24 +20,30 @@ const { subtract } = booleans
 const { translate } = transforms
 
 /**
- * Baut eine Viertelscheibe mit Nuten entlang beider Innenkanten.
- * sx/sy: +1 oder -1 – bestimmt den Quadranten.
- *
- * Koordinaten: X = Breite, Y = Höhe, Z = Stärke
- * Innenkante vertikal:   bei x=0
- * Innenkante horizontal: bei y=0
+ * Konvertiert JSCAD → Three.js und rotiert die Geometrie so,
+ * dass sie FLACH auf dem Druckbett liegt (XZ-Ebene = Druckbett).
+ * Stärke zeigt nach oben (Y-Achse).
  */
+function toFlatGeo(jscadGeom, thickness) {
+  const geo = jscadToThreeGeometry(jscadGeom)
+  // JSCAD: Panels in XY-Ebene, Z = Stärke
+  // Nach rotateX(-90°): Panels in XZ-Ebene (flach), Y = Stärke
+  geo.applyMatrix4(new THREE.Matrix4().makeRotationX(-Math.PI / 2))
+  // Auf Druckbett legen (Y = 0 ist Bett)
+  geo.translate(0, thickness / 2, 0)
+  return geo
+}
+
 function buildPanel(pW, pH, t, gDep, gW, cl, sx, sy) {
-  // Hauptkörper
   let p = translate([sx*pW/2, sy*pH/2, 0], cuboid({size:[pW, pH, t]}))
 
-  // Nut an der inneren Vertikalkante (x=0), läuft volle Höhe pH
+  // Nut an innerer Vertikalkante (x=0), volle Höhe
   p = subtract(p, translate(
     [sx*gDep/2, sy*pH/2, 0],
     cuboid({size:[gDep + 0.1, pH + 0.1, gW + cl]})
   ))
 
-  // Nut an der inneren Horizontalkante (y=0), läuft volle Breite pW
+  // Nut an innerer Horizontalkante (y=0), volle Breite
   p = subtract(p, translate(
     [sx*pW/2, sy*gDep/2, 0],
     cuboid({size:[pW + 0.1, gDep + 0.1, gW + cl]})
@@ -49,38 +52,18 @@ function buildPanel(pW, pH, t, gDep, gW, cl, sx, sy) {
   return p
 }
 
-/**
- * Vertikalschiene: verbindet linke und rechte Viertelscheiben.
- * Läuft die volle halbe Fensterhöhe (pH).
- * Sitzt in der vertikalen Nut beider Scheiben gleichzeitig.
- */
 function buildVerticalRail(pH, gDep, gW, cl) {
-  // Breite: 2×Nuttiefe (beide Seiten), Höhe: volle pH, Stärke: Nutbreite
   const w = 2 * gDep - cl
   const h = pH - cl
-  const d = gW  - cl
+  const d = gW - cl
   return translate([0, -h/2, 0], cuboid({size:[w, h, d]}))
 }
 
-/**
- * Horizontalschiene: verbindet obere und untere Viertelscheiben.
- * Kürzer als halbe Fensterbreite – stoppt an der Vertikalschiene im Zentrum.
- * Wird von außen (linke/rechte Außenkante) eingeschoben.
- */
-function buildHorizontalRail(pW, pH, gDep, gW, cl) {
-  // Länge: pW minus eine Nuttiefe (Platz für Vertikalschiene am Zentrum)
+function buildHorizontalRail(pW, gDep, gW, cl) {
   const railLen = pW - gDep - cl / 2
-  const w = gW  - cl          // Stärke (passt in Nut)
-  const h = 2 * gDep - cl     // Höhe (beide Nuten)
-  // Schiene liegt links vom Zentrum (für linke Hälfte); center-x = -(railLen/2 + gDep)
+  const w = gW - cl
+  const h = 2 * gDep - cl
   return translate([-(railLen/2 + gDep), 0, 0], cuboid({size:[railLen, h, w]}))
-}
-
-/**
- * Three.js Geometrie aus JSCAD, korrekt positioniert für Vorschau.
- */
-function toGeo(jscadGeom) {
-  return jscadToThreeGeometry(jscadGeom)
 }
 
 export const fenster_viertel = {
@@ -104,57 +87,43 @@ export const fenster_viertel = {
     const gW = groove_width
     const cl = clearance
 
-    // ── Viertelscheiben ──────────────────────────────────────────────────────
-    const q1 = toGeo(buildPanel(pW, pH, t, gD, gW, cl, -1, -1))
-    const q2 = toGeo(buildPanel(pW, pH, t, gD, gW, cl, +1, -1))
-    const q3 = toGeo(buildPanel(pW, pH, t, gD, gW, cl, -1, +1))
-    const q4 = toGeo(buildPanel(pW, pH, t, gD, gW, cl, +1, +1))
+    const q1 = toFlatGeo(buildPanel(pW, pH, t, gD, gW, cl, -1, -1), t)
+    const q2 = toFlatGeo(buildPanel(pW, pH, t, gD, gW, cl, +1, -1), t)
+    const q3 = toFlatGeo(buildPanel(pW, pH, t, gD, gW, cl, -1, +1), t)
+    const q4 = toFlatGeo(buildPanel(pW, pH, t, gD, gW, cl, +1, +1), t)
+    const sV  = toFlatGeo(buildVerticalRail(pH, gD, gW, cl), gW - cl)
+    const sHL = toFlatGeo(buildHorizontalRail(pW, gD, gW, cl), gW - cl)
+    const sHR = toFlatGeo(buildHorizontalRail(pW, gD, gW, cl), gW - cl)
 
-    // ── Schienen ──────────────────────────────────────────────────────────────
-    // Vertikalschienen (x=0 Naht, links und rechts je eine → gleiche Geo)
-    const sV = toGeo(buildVerticalRail(pH, gD, gW, cl))
-
-    // Horizontalschienen (y=0 Naht, jeweils von links und rechts)
-    const sHL = toGeo(buildHorizontalRail(pW, pH, gD, gW, cl))    // linke Seite
-    // Rechte Seite = Spiegel der linken (in X), nutze gleiche Geo + Versatz in Vorschau
-    const sHR = toGeo(buildHorizontalRail(pW, pH, gD, gW, cl))
-
-    // ── Vorschau: alle Teile montiert ────────────────────────────────────────
     const previewParts = [
-      { geometry: q1, label: 'Q1', previewOffsetX: 0, previewOffsetY: 0 },
-      { geometry: q2, label: 'Q2', previewOffsetX: 0, previewOffsetY: 0 },
-      { geometry: q3, label: 'Q3', previewOffsetX: 0, previewOffsetY: 0 },
-      { geometry: q4, label: 'Q4', previewOffsetX: 0, previewOffsetY: 0 },
-      // Vertikalschienen: x=0, untere Hälfte und obere Hälfte
-      { geometry: sV, label: 'SV_unten', previewOffsetX:  0, previewOffsetY: 0 },
-      { geometry: sV, label: 'SV_oben',  previewOffsetX:  0, previewOffsetY: 0 },
-      // Horizontalschienen: y=0, linke und rechte Seite
+      { geometry: q1,  label: 'Q1', previewOffsetX: 0, previewOffsetY: 0 },
+      { geometry: q2,  label: 'Q2', previewOffsetX: 0, previewOffsetY: 0 },
+      { geometry: q3,  label: 'Q3', previewOffsetX: 0, previewOffsetY: 0 },
+      { geometry: q4,  label: 'Q4', previewOffsetX: 0, previewOffsetY: 0 },
+      { geometry: sV,  label: 'SV_unten',  previewOffsetX: 0, previewOffsetY: 0 },
+      { geometry: sV,  label: 'SV_oben',   previewOffsetX: 0, previewOffsetY: 0 },
       { geometry: sHL, label: 'SH_links',  previewOffsetX: 0, previewOffsetY: 0 },
       { geometry: sHR, label: 'SH_rechts', previewOffsetX: 0, previewOffsetY: 0 },
     ]
 
-    // ── Download: 3 STL-Typen ────────────────────────────────────────────────
     const downloadParts = [
-      { geometry: q1,  label: 'Viertelscheibe'  },  // 4× drucken
-      { geometry: sV,  label: 'Schiene_V'       },  // 2× drucken (volle Höhe)
-      { geometry: sHL, label: 'Schiene_H'       },  // 2× drucken (etwas kürzer)
+      { geometry: q1,  label: 'Viertelscheibe' },
+      { geometry: sV,  label: 'Schiene_V'      },
+      { geometry: sHL, label: 'Schiene_H'      },
     ]
 
     const railLenV = Math.round(pH - cl)
     const railLenH = Math.round(pW - gD - cl / 2)
-    const note = window_width === window_height
-      ? `Quadratisch · Schiene_V: ${railLenV}mm (2×) · Schiene_H: ${railLenH}mm (2×)`
-      : `Schiene_V: ${railLenV}mm (2×) · Schiene_H: ${railLenH}mm (2×)`
 
     return {
-      parts:        previewParts,
+      parts: previewParts,
       downloadParts,
-      numSeg:       3,
-      info:         `${window_width}×${window_height}mm · ZIP: 3 STL · ${note} · Viertelscheibe 4× drucken`,
+      numSeg: 3,
+      info: `${window_width}×${window_height}mm · Schiene_V: ${railLenV}mm (2×) · Schiene_H: ${railLenH}mm (2×) · Viertelscheibe 4×`,
     }
   },
 
   calcVolume({ window_width, window_height, thickness }) {
-    return window_width * window_height * thickness  // Näherung
+    return window_width * window_height * thickness
   },
 }

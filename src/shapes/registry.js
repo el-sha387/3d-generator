@@ -1,5 +1,6 @@
 import * as THREE from 'three'
 import { steckleiste } from './steckleiste.js'
+import { fenster_viertel } from './fenster.js'
 
 // mergeBufferGeometries – inline, Three.js r128 kompatibel
 function mergeBufferGeometries(geos) {
@@ -207,4 +208,5 @@ export const SHAPES = {
   },
 
   steckleiste,
+  fenster_viertel,
 }

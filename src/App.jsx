@@ -25,15 +25,14 @@ function groupPresets(presets) {
 }
 
 export default function App() {
-  const [shapeKey,    setShapeKey]    = useState(DEFAULT_SHAPE)
-  const [params,      setParams]      = useState(getDefaultParams(DEFAULT_SHAPE))
-  const [filename,    setFilename]    = useState('')
-  const [multiParts,  setMultiParts]  = useState(null)
-  const [multiInfo,   setMultiInfo]   = useState(null)
-  const [savedPresets,setSavedPresets]= useState(() => loadSavedPresets())
-  const [showPresets, setShowPresets] = useState(false)
-  const [speech,      setSpeech]      = useState({ listening: false, loading: false, error: '' })
-  const [chatHistory, setChatHistory] = useState([])
+  const [shapeKey,     setShapeKey]     = useState(DEFAULT_SHAPE)
+  const [params,       setParams]       = useState(getDefaultParams(DEFAULT_SHAPE))
+  const [filename,     setFilename]     = useState('')
+  const [buildResult,  setBuildResult]  = useState(null)
+  const [savedPresets, setSavedPresets] = useState(() => loadSavedPresets())
+  const [showPresets,  setShowPresets]  = useState(false)
+  const [speech,       setSpeech]       = useState({ listening: false, loading: false, error: '' })
+  const [chatHistory,  setChatHistory]  = useState([])
   const meshRef = useRef(null)
 
   const shapeConfig = SHAPES[shapeKey]
@@ -41,12 +40,11 @@ export default function App() {
   const volume      = shapeConfig?.calcVolume(params) ?? 0
   const stats       = calcFilament(volume)
 
-  // Multi-Part Shapes (Steckleiste etc.) neu berechnen wenn params sich ändern
+  // Multi-Part Shapes neu berechnen wenn params sich ändern
   useEffect(() => {
-    if (!isMulti) { setMultiParts(null); setMultiInfo(null); return }
+    if (!isMulti) { setBuildResult(null); return }
     const result = shapeConfig.buildParts(params)
-    setMultiParts(result.parts)
-    setMultiInfo({ numSeg: result.numSeg, segLen: result.segLen })
+    setBuildResult(result)
   }, [shapeKey, params, isMulti])
 
   const handleShapeChange = useCallback(key => {
@@ -81,9 +79,10 @@ export default function App() {
   }, [])
 
   const handleDownload = async () => {
-    const name = filename.trim() || shapeConfig?.label?.replace(/\s*\/.*/, '') || 'part'
-    if (isMulti && multiParts) {
-      await downloadMultiSTL(multiParts, name)
+    const name = filename.trim() || shapeConfig?.label?.replace(/\s*[\/·].*/,'') || 'part'
+    if (isMulti && buildResult) {
+      const parts = buildResult.downloadParts || buildResult.parts
+      await downloadMultiSTL(parts, name)
     } else {
       if (meshRef.current) exportSTL(meshRef.current, name)
     }
@@ -94,13 +93,10 @@ export default function App() {
     const SR = window.SpeechRecognition || window.webkitSpeechRecognition
     if (!SR) { setSpeech(s => ({ ...s, error: 'Spracheingabe nicht verfügbar (Chrome/Edge empfohlen)' })); return }
     const rec = new SR(); rec.lang = 'de-DE'
-    rec.onstart  = () => setSpeech(s => ({ ...s, listening: true, error: '' }))
+    rec.onstart  = () => setSpeech(s => ({ ...s, listening: true,  error: '' }))
     rec.onend    = () => setSpeech(s => ({ ...s, listening: false }))
     rec.onerror  = () => setSpeech(s => ({ ...s, listening: false, error: 'Mikrofon-Fehler' }))
-    rec.onresult = async e => {
-      const text = e.results[0][0].transcript
-      await parseSpeech(text)
-    }
+    rec.onresult = async e => await parseSpeech(e.results[0][0].transcript)
     rec.start()
   }
 
@@ -116,12 +112,12 @@ export default function App() {
       })
       const data = await resp.json()
       if (data.error) throw new Error(data.error)
-      const raw = data.content?.filter(b => b.type === 'text').map(b => b.text).join('') || ''
+      const raw    = data.content?.filter(b => b.type === 'text').map(b => b.text).join('') || ''
       const parsed = JSON.parse(raw.replace(/```json|```/g, '').trim())
       setChatHistory(h => [...h, { role: 'assistant', content: raw }])
       if (parsed.type === 'shape' && SHAPES[parsed.kind]) {
         setShapeKey(parsed.kind)
-        setParams(p => ({ ...getDefaultParams(parsed.kind), ...parsed.params }))
+        setParams({ ...getDefaultParams(parsed.kind), ...parsed.params })
         setFilename(parsed.summary || '')
       } else if (parsed.type === 'question') {
         setSpeech(s => ({ ...s, error: `❓ ${parsed.question}` }))
@@ -133,8 +129,9 @@ export default function App() {
     }
   }
 
-  const allPresets = [...BUILTIN_PRESETS, ...savedPresets]
+  const allPresets   = [...BUILTIN_PRESETS, ...savedPresets]
   const presetGroups = groupPresets(allPresets)
+  const multiInfo    = isMulti && buildResult ? (buildResult.info || `${buildResult.numSeg} Teile`) : null
 
   return (
     <div className="layout">
@@ -150,12 +147,12 @@ export default function App() {
         </div>
       </header>
 
-      {/* ── Preset Panel ── */}
+      {/* Preset Panel */}
       {showPresets && (
         <div className="preset-panel card">
           <div className="preset-panel-header">
             <span className="field-label" style={{fontSize:13}}>Preset laden</span>
-            <button className="btn btn-sm btn-outline" onClick={handlePresetSave} title="Aktuelle Einstellungen speichern">
+            <button className="btn btn-sm btn-outline" onClick={handlePresetSave}>
               + Aktuell speichern
             </button>
           </div>
@@ -183,15 +180,13 @@ export default function App() {
         shapeKey={shapeKey}
         params={params}
         shapeConfig={isMulti ? null : shapeConfig}
-        multiParts={multiParts}
-        onMeshReady={(mesh) => { meshRef.current = mesh }}
+        multiParts={buildResult?.parts || null}
+        onMeshReady={mesh => { meshRef.current = mesh }}
       />
 
-      {/* Multi-Info Banner */}
-      {isMulti && multiInfo && (
+      {multiInfo && (
         <div className="multi-info">
-          <span>📐 {multiInfo.numSeg} Segmente · je {multiInfo.segLen} mm · Zapfen-Verbindung</span>
-          <span style={{color:'#888',fontSize:12}}>Download erstellt eine ZIP mit {multiInfo.numSeg} STL-Dateien</span>
+          <span>📐 {multiInfo}</span>
         </div>
       )}
 
@@ -204,14 +199,13 @@ export default function App() {
 
       <StatsBar stats={stats} />
 
-      {/* ── Aktionen ── */}
       <div className="actions">
         <div className="field-group" style={{ flex: 1, minWidth: 160 }}>
           <label className="field-label">Dateiname</label>
           <input
             type="text"
             className="input"
-            placeholder="z.B. distanzscheibe_m8"
+            placeholder="z.B. fenster_wohnzimmer"
             value={filename}
             onChange={e => setFilename(e.target.value)}
             onKeyDown={e => e.key === 'Enter' && handleDownload()}
@@ -222,20 +216,18 @@ export default function App() {
         </button>
       </div>
 
-      {/* ── Spracheingabe ── */}
       <div className="speech-bar">
         <button
           className={`btn btn-speech ${speech.listening ? 'listening' : ''} ${speech.loading ? 'loading' : ''}`}
           onClick={handleVoice}
           disabled={speech.loading}
-          title="Teil per Sprache beschreiben"
         >
           {speech.loading ? '⏳ Analysiere…' : speech.listening ? '🔴 Höre zu…' : '🎙 Spracheingabe'}
         </button>
-        {speech.error && <span className="speech-error">{speech.error}</span>}
-        {!speech.error && !speech.listening && !speech.loading && (
-          <span className="speech-hint">Sag z.B. "Distanzscheibe 30mm Außen, 5mm hoch, 8mm Loch"</span>
-        )}
+        {speech.error
+          ? <span className="speech-error">{speech.error}</span>
+          : <span className="speech-hint">Sag z.B. "Distanzscheibe 30mm Außen, 5mm hoch, 8mm Loch"</span>
+        }
       </div>
     </div>
   )

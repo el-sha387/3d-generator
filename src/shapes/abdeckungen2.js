@@ -1,7 +1,6 @@
 import { primitives, booleans, transforms } from '@jscad/modeling'
 import * as THREE from 'three'
 import { jscadToThreeGeometry } from '../utils/jscadToThree.js'
-import { mergeBufferGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js'
 
 const { cylinder, cuboid } = primitives
 const { subtract, union } = booleans

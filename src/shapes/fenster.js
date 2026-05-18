@@ -68,7 +68,9 @@ function buildHorizontalRail(pW, gDep, gW, cl) {
 
 export const fenster_viertel = {
   label: 'Fensterscheibe 4-teilig + Nut & Feder',
-  group: 'Verbinder',
+  group: 'Spezialteile',
+  shortLabel: 'Fensterscheibe',
+  icon: '⊞',
   type: 'multi',
   fields: [
     { id: 'window_width',  label: 'Fensterbreite',   min: 100, max: 2000, default: 400, step: 10   },
